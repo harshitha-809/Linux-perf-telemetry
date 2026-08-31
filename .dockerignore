@@ -1,0 +1,5 @@
+build
+.git
+results
+*.bin
+perf.data*

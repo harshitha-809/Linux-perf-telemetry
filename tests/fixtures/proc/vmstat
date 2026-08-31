@@ -1,0 +1,8 @@
+nr_free_pages 1000
+nr_dirty 3
+pgpgin 100
+pgpgout 50
+pswpin 0
+pswpout 0
+pgfault 9000
+pgmajfault 4

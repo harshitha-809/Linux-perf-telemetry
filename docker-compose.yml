@@ -1,0 +1,18 @@
+services:
+  lpt-agent:
+    build: .
+    ports:
+      - "9100:9100"
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+    command: ["--listen", "0.0.0.0", "--port", "9100", "--proc-root", "/host/proc"]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - lpt-agent

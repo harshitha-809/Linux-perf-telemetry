@@ -1,0 +1,7 @@
+cpu  3357 0 4318 1362393 200 10 20 0 0 0
+cpu0 3357 0 4318 1362393 200 10 20 0 0 0
+ctxt 1111
+btime 1000
+processes 42
+procs_running 1
+procs_blocked 0

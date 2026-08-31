@@ -1,0 +1,5 @@
+Name:	init
+State:	S (sleeping)
+Pid:	1
+voluntary_ctxt_switches:	12
+nonvoluntary_ctxt_switches:	1

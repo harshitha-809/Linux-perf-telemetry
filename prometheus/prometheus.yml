@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: linux-perf-telemetry
+    static_configs:
+      - targets: ["lpt-agent:9100"]
+    metrics_path: /metrics

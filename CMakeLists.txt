@@ -65,3 +65,9 @@ if(LPT_BUILD_TESTS)
 endif()
 
 install(TARGETS lpt-agent lpt-workload RUNTIME DESTINATION bin)
+
+if(WIN32)
+    add_executable(lpt-win-etw src/win_etw_demo.cpp)
+    target_link_libraries(lpt-win-etw PRIVATE advapi32)
+    lpt_warnings(lpt-win-etw)
+endif()

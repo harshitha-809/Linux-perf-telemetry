@@ -121,6 +121,41 @@ Working set 256 MiB anonymous `vector<uint64_t>`.
 
 Add `--sync` to force `fsync` after each write (durability-bound). That explodes `ms_io` and voluntary switches; the “after” sequential path without `fsync` is the page-cache streaming case.
 
+### 4. Telemetry Parsing Optimization
+
+**1. Problem**
+The `/proc` collectors used `split_ws()`, `std::istringstream`, temporary strings/vectors, and tokenization in hot parsing paths.
+
+**2. Optimization**
+`apply_status_fields` and `apply_io_fields` were changed to use direct prefix matching and numeric parsing without unnecessary tokenization. `parse_proc_pid_stat` was changed to traverse fields directly after correctly locating the `comm` field.
+
+**3. Correctness**
+The existing GoogleTest suite passed: 9 tests passed.
+
+**4. Benchmark methodology**
+* process limit: 25
+* interval: 50ms
+* duration: 5 seconds
+* same command/configuration before and after
+* no perf
+* controlled WSL environment
+
+**5. Results**
+
+| Metric | Before | After | Change |
+| --- | --- | --- | --- |
+| Real time | 5.122s | 5.053s | 1.35% lower |
+| User CPU time | 0.271s | 0.155s | 42.8% lower |
+| System CPU time | 0.256s | 0.256s | No change |
+
+**6. Interpretation**
+The controlled benchmark showed a 42.8% reduction in total userspace CPU time while system CPU time remained unchanged. This supports the conclusion that reducing userspace parsing/tokenization overhead improved exporter efficiency under this workload.
+
+**7. Reproduction**
+```bash
+{ time timeout 5 ./build/lpt-agent --listen 127.0.0.1 --port 9101 --process-limit 25 --interval-ms 50 ; }
+```
+
 ### Relating `perf` to the exporter
 
 ```

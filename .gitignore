@@ -13,3 +13,6 @@ perf.data*
 *.o
 *.a
 .DS_Store
+perf-baseline.txt
+time-baseline.txt
+time-after.txt

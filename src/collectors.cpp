@@ -21,17 +21,7 @@ std::uint64_t to_u64(const std::string& s, std::uint64_t fallback = 0) {
     return static_cast<std::uint64_t>(v);
 }
 
-std::int64_t to_i64(const std::string& s, std::int64_t fallback = 0) {
-    if (s.empty()) {
-        return fallback;
-    }
-    char* end = nullptr;
-    const long long v = std::strtoll(s.c_str(), &end, 10);
-    if (end == s.c_str()) {
-        return fallback;
-    }
-    return static_cast<std::int64_t>(v);
-}
+
 
 CpuTimes parse_cpu_line(const std::vector<std::string>& f) {
     CpuTimes t;
@@ -221,22 +211,52 @@ ProcessSample parse_proc_pid_stat(int pid, const std::string& text) {
         throw std::runtime_error("malformed /proc/pid/stat");
     }
     p.comm = text.substr(open + 1, close - open - 1);
-    const auto rest = split_ws(text.substr(close + 1));
-    // After comm: state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt
-    // utime stime cutime cstime priority nice num_threads itrealvalue starttime vsize rss ...
-    if (rest.size() < 22) {
+    
+    const char* ptr = text.c_str() + close + 1;
+    while (*ptr == ' ' || *ptr == '\t') ptr++;
+    
+    if (*ptr == '\0') {
         throw std::runtime_error("short /proc/pid/stat");
     }
-    p.state = rest[0].empty() ? '?' : rest[0][0];
-    p.minflt = to_u64(rest[7]);
-    p.majflt = to_u64(rest[9]);
-    p.utime = to_u64(rest[11]);
-    p.stime = to_u64(rest[12]);
-    p.cutime = to_u64(rest[13]);
-    p.cstime = to_u64(rest[14]);
-    p.num_threads = to_i64(rest[17]);
-    p.vsize = to_u64(rest[20]);
-    p.rss_pages = to_i64(rest[21]);
+    
+    p.state = *ptr;
+    ptr++;
+    
+    auto next_u64 = [&]() -> std::uint64_t {
+        char* end;
+        std::uint64_t v = std::strtoull(ptr, &end, 10);
+        if (ptr == end) throw std::runtime_error("short /proc/pid/stat");
+        ptr = end;
+        return v;
+    };
+    auto next_i64 = [&]() -> std::int64_t {
+        char* end;
+        std::int64_t v = std::strtoll(ptr, &end, 10);
+        if (ptr == end) throw std::runtime_error("short /proc/pid/stat");
+        ptr = end;
+        return v;
+    };
+
+    try {
+        for (int i = 0; i < 6; ++i) next_u64();
+        p.minflt = next_u64();
+        next_u64();
+        p.majflt = next_u64();
+        next_u64();
+        p.utime = next_u64();
+        p.stime = next_u64();
+        p.cutime = next_u64();
+        p.cstime = next_u64();
+        next_u64();
+        next_i64();
+        p.num_threads = next_i64();
+        next_u64();
+        next_u64();
+        p.vsize = next_u64();
+        p.rss_pages = next_i64();
+    } catch (const std::exception&) {
+        throw std::runtime_error("short /proc/pid/stat");
+    }
     return p;
 }
 
@@ -244,14 +264,10 @@ void apply_status_fields(ProcessSample& sample, const std::string& status_text) 
     std::istringstream in(status_text);
     std::string line;
     while (std::getline(in, line)) {
-        const auto f = split_ws(line);
-        if (f.size() < 2) {
-            continue;
-        }
-        if (f[0] == "voluntary_ctxt_switches:") {
-            sample.voluntary_ctxt_switches = to_u64(f[1]);
-        } else if (f[0] == "nonvoluntary_ctxt_switches:") {
-            sample.nonvoluntary_ctxt_switches = to_u64(f[1]);
+        if (starts_with(line, "voluntary_ctxt_switches:")) {
+            sample.voluntary_ctxt_switches = std::strtoull(line.c_str() + 24, nullptr, 10);
+        } else if (starts_with(line, "nonvoluntary_ctxt_switches:")) {
+            sample.nonvoluntary_ctxt_switches = std::strtoull(line.c_str() + 27, nullptr, 10);
         }
     }
 }
@@ -260,14 +276,10 @@ void apply_io_fields(ProcessSample& sample, const std::string& io_text) {
     std::istringstream in(io_text);
     std::string line;
     while (std::getline(in, line)) {
-        const auto f = split_ws(line);
-        if (f.size() < 2) {
-            continue;
-        }
-        if (f[0] == "read_bytes:") {
-            sample.read_bytes = to_u64(f[1]);
-        } else if (f[0] == "write_bytes:") {
-            sample.write_bytes = to_u64(f[1]);
+        if (starts_with(line, "read_bytes:")) {
+            sample.read_bytes = std::strtoull(line.c_str() + 11, nullptr, 10);
+        } else if (starts_with(line, "write_bytes:")) {
+            sample.write_bytes = std::strtoull(line.c_str() + 12, nullptr, 10);
         }
     }
 }

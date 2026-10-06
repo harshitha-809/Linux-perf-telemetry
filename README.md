@@ -134,24 +134,28 @@ The `/proc` collectors used `split_ws()`, `std::istringstream`, temporary string
 **3. Correctness**
 The existing GoogleTest suite passed: 9 tests passed.
 
-**4. Benchmark methodology**
-* process limit: 25
-* interval: 50ms
-* duration: 5 seconds
-* same command/configuration before and after
-* no perf
-* controlled WSL environment
+**4. Benchmark Methodology**
+This was an empirical test performed in a controlled WSL/Linux environment, not a production workload.
+* 10 sequential baseline runs vs. 10 sequential optimized runs
+* Configuration: 25 process limit, 50 ms interval, 5 second duration
+* Measurement: POSIX `time` (no `perf` profiling overhead)
+* Same hardware/environment for all runs
 
-**5. Results**
+**5. Results (Median of 10 runs)**
 
-| Metric | Before | After | Change |
+| Metric | Baseline Median | Optimized Median | Change |
 | --- | --- | --- | --- |
-| Real time | 5.122s | 5.053s | 1.35% lower |
-| User CPU time | 0.271s | 0.155s | 42.8% lower |
-| System CPU time | 0.256s | 0.256s | No change |
+| User CPU time | 0.3035 s | 0.1775 s | 41.5% lower |
+| System CPU time | 0.230 s | 0.232 s | Broadly unchanged |
+
+**Observed Ranges:**
+* Baseline user CPU: 0.274-0.360 s
+* Optimized user CPU: 0.149-0.209 s
+
+*(Note: Real elapsed time was excluded from the performance metrics because it is artificially bounded by the 5-second timeout.)*
 
 **6. Interpretation**
-The controlled benchmark showed a 42.8% reduction in total userspace CPU time while system CPU time remained unchanged. This supports the conclusion that reducing userspace parsing/tokenization overhead improved exporter efficiency under this workload.
+The optimization primarily reduced userspace parsing overhead, while system CPU time remained broadly unchanged. This reflects total userspace CPU time for the controlled exporter benchmark.
 
 **7. Reproduction**
 ```bash

@@ -79,45 +79,47 @@ Protocol (also [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
 3. `SECONDS_RUN=8 ./scripts/run_experiments.sh`
 4. Compare `results/perf-stat-*.txt`.
 
-The table below is a **representative** run on Linux 6.x, 8 threads, `perf stat -d`, one workload thread, 8 seconds. Re-run locally; treat **IPC** and **miss rates** as the signal, not absolute cycle counts.
+The workload generator (`lpt-workload`) produces synthetic CPU, memory, and I/O bottlenecks. The associated `perf` experiments require a Linux environment with appropriate hardware performance-counter support. They should be run on dedicated/stable hardware rather than a constrained laptop or a VM/WSL2 environment where PMU support may be unreliable.
 
-### 1. CPU-bound
+The tables below describe the **theoretical/expected behavior** when profiling these synthetic workloads:
 
-| | Before (branchy FP loop) | After (`--optimized` integer mix) | What changed |
-| --- | ---: | ---: | --- |
-| Instructions / cycle (IPC) | ~0.55 | ~2.1 | Fewer mispredicted branches; tighter ALU loop |
-| Branch-miss related stalls | high (frontend) | low | `if ((i & 1) == 0)` vs branch-light mix |
-| `task-clock` ≈ wall | 8.0 s | 8.0 s | Both saturate one core |
-| `lpt_cpu_usage_ratio{cpu="all"}` | ~1/NCPU | ~1/NCPU | Same occupancy; quality of those cycles differs |
-| `lpt_context_switches_per_second` (process) | low | low | CPU-bound, rarely blocks |
+### 1. CPU-bound (Theoretical)
+
+| Metric | Before (branchy FP loop) | After (`--optimized` integer mix) | What changed |
+| --- | --- | --- | --- |
+| Instructions / cycle (IPC) | Expected lower | Expected higher | Fewer mispredicted branches; tighter ALU loop |
+| Branch-miss related stalls | Expected high (frontend) | Expected low | `if ((i & 1) == 0)` vs branch-light mix |
+| `task-clock` ≈ wall | Time-bounded by workload | Time-bounded by workload | Both are designed to keep one workload thread busy |
+| `lpt_cpu_usage_ratio{cpu="all"}` | High usage on single core | High usage on single core | Same occupancy; quality of those cycles differs |
+| `lpt_context_switches_per_second` | Expected low | Expected low | CPU-bound, rarely blocks |
 
 **Optimization:** replace a branchy `volatile double` reduction with an integer hash mix. `perf record` + `perf report` should show time moving out of library FP helpers into `burn_cpu_optimized`.
 
-### 2. Memory-bound
+### 2. Memory-bound (Theoretical)
 
-Working set 256 MiB anonymous `vector<uint64_t>`.
+Working set memory allocation of anonymous `vector<uint64_t>`.
 
-| | Before (`--pattern rand`) | After (`--pattern seq --optimized`) | What changed |
-| --- | ---: | ---: | --- |
-| `cache-misses` / `cache-references` | ~40–60% LLC miss | ~1–5% | Random vs sequential / prefetch |
-| `page-faults` after warmup | ~0 | ~0 | Both already mapped; faults are a **first-touch** story |
-| Retired IPC | ~0.2 | ~1.0+ | Stalled on DRAM vs streaming |
-| `lpt_page_faults_minor_per_second` | spike at start | spike at start | Demand paging of anon pages (`do_anonymous_page`) |
-| `lpt_memory_anon_bytes` | +~256 MiB | +~256 MiB | Same RSS; different *access* pattern |
+| Metric | Before (`--pattern rand`) | After (`--pattern seq --optimized`) | What changed |
+| --- | --- | --- | --- |
+| Cache pressure | High LLC thrashing | Better sequential locality and prefetch opportunity | Random vs sequential / prefetch |
+| Page-faults | Initial spike, then ~0 | Initial spike, then ~0 | Both already mapped; faults are a **first-touch** story |
+| Retired IPC | Expected lower | Expected higher | Stalled on DRAM vs streaming |
+| `lpt_page_faults_minor_per_second` | Spike at start | Spike at start | Demand paging of anon pages (`do_anonymous_page`) |
+| Memory allocation | Matches working set size | Matches working set size | Same RSS; different *access* pattern |
 
 **Optimization:** sequential streaming lets the hardware prefetcher and adjacent cache lines work. Random index generation thrashes the TLB and LLC. First-touch minor faults are visible in `/proc/vmstat` `pgfault`; **cache** behavior is *not* in `/proc` — that is why the scripts use `perf stat`.
 
-### 3. I/O-bound
+### 3. I/O-bound (Theoretical)
 
-64 KiB writes into a 64 MiB file.
+Writes into a target file on disk.
 
-| | Before (random writes) | After (`--optimized` sequential) | What changed |
-| --- | ---: | ---: | --- |
-| `lpt_disk_util_ratio` | high, bursty | high, smoother | Random I/O vs sequential |
-| `lpt_disk_write_bytes_per_second` | lower | higher (often 2–10× on HDD; smaller gap on NVMe) | Elevator / NVMe queue locality |
-| `lpt_process_write_bytes_per_second` | matches dirtied bytes | matches dirtied bytes | `/proc/pid/io` is storage accounting |
-| `lpt_process_voluntary_csw_per_second` | higher | lower | More blocking in `D` state on slow devices |
-| `lpt_cpu_iowait_ratio` | elevated | lower | Scheduler iowait bucket |
+| Metric | Before (random writes) | After (`--optimized` sequential) | What changed |
+| --- | --- | --- | --- |
+| `lpt_disk_util_ratio` | High, bursty | High, smoother | Random I/O vs sequential |
+| `lpt_disk_write_bytes_per_second` | Expected lower | Expected higher | Elevator / NVMe queue locality |
+| `lpt_process_write_bytes_per_second`| Matches dirtied bytes | Matches dirtied bytes | `/proc/pid/io` is storage accounting |
+| `lpt_process_voluntary_csw_per_second` | Expected higher | Expected lower | More blocking in `D` state on slow devices |
+| `lpt_cpu_iowait_ratio` | Expected elevated | Expected lower | Scheduler iowait bucket |
 
 Add `--sync` to force `fsync` after each write (durability-bound). That explodes `ms_io` and voluntary switches; the “after” sequential path without `fsync` is the page-cache streaming case.
 

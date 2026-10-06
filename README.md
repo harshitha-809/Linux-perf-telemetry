@@ -45,7 +45,7 @@ curl -s localhost:9100/metrics | head
 ./build/lpt-exporter --once --interval 200   # two samples, print text, exit
 ```
 
-`GET /health` is a liveness probe. Point Prometheus at `host:9100` (`deploy/prometheus.yml`).
+`GET /health` is a liveness probe. Point Prometheus at `host:9100` (`deploy/prometheus.yml`). The resulting Prometheus endpoint serves as a robust datasource for standard visualization and alerting systems, such as Grafana.
 
 ## Workload generator
 
